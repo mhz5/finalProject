@@ -11,6 +11,10 @@
 
 #include "main.hh"
 
+// RSA encryption of private messages
+#include "crypto.cc"
+#include "crypto.hh"
+
 // resend block requests
 
 PrivDialog::PrivDialog(ChatDialog* dialog, QString origin, NetSocket* sock) {
