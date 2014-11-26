@@ -1122,6 +1122,8 @@ void NetSocket::rumorTimeout() {
 }
 
 int main(int argc, char **argv) {
+  testFunc();
+
   // Initialize Qt toolkit
   QApplication app(argc,argv);
 
