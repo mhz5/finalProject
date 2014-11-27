@@ -1,0 +1,36 @@
+https://gmplib.org/manual/Build-Options.html#Build-Options
+
+# In the Makefile, around line 103, the make statement is as follows:
+
+$(TARGET):  $(OBJECTS)  
+	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
+
+# Append this snippet: " -L/gmp -lgmp" to end up with
+
+$(TARGET):  $(OBJECTS)  
+	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)  -L/gmp -lgmp
+
+# Create finalProject/gmp directory
+
+# In your ~/.bash_profile, add finalProject/gmp to your $PATH:
+
+PATH=$PATH:$HOME/cs426/peerster/finalProject/gmp
+
+# Inside gmp-6.0.0 directory (the actual gmp package), run:
+
+ls -l mpn/m4-ccas
+chmod +x mpn/m4-ccas
+./configure prefix=$HOME/cs426/peerster/finalProject/gmp
+
+# The prefix flag configures the Makefile in the proper directory. Otherwise, gmp would attempt to install in /usr/local, which we don't have permissions for.
+
+# Now from finalProject/gmp:
+
+make
+make check !!! Make sure to make check, to ensure that gmp compiled successfully !!!
+
+# File "crypto.cc" should have the line
+	
+	> #include "gmp/gmp.h"
+
+# at the top. This should import the gmp module. If you did not install gmp in finalProject/gmp, then #include the proper installation directory.

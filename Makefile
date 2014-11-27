@@ -101,7 +101,7 @@ first: all
 all: Makefile $(TARGET)
 
 $(TARGET):  $(OBJECTS)  
-	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
+	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS) -L/gmp -lgmpxx -lgmp
 
 Makefile: peerster.pro  /usr/lib64/qt4/mkspecs/linux-g++/qmake.conf /usr/lib64/qt4/mkspecs/common/unix.conf \
 		/usr/lib64/qt4/mkspecs/common/linux.conf \
@@ -216,10 +216,10 @@ compiler_clean: compiler_moc_header_clean
 main.o: main.cc main.hh \
 		crypto.cc \
 		crypto.hh
-	$(CXX) -c $(CXXFLAGS) -std=c++0x $(INCPATH) -o main.o main.cc
+	$(CXX) -c $(CXXFLAGS) -std=c++0x $(INCPATH) -o main.o main.cc 
 
 moc_main.o: moc_main.cpp 
-	$(CXX) -c $(CXXFLAGS) -std=c++0x $(INCPATH) -o moc_main.o moc_main.cpp
+	$(CXX) -c $(CXXFLAGS) -std=c++0x $(INCPATH) -o moc_main.o moc_main.cpp 
 
 ####### Install
 
