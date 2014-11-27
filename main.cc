@@ -1117,30 +1117,35 @@ void NetSocket::rumorTimeout() {
 
     if (map != NULL) {
       rumor(map);
-    }
+    }  
   }
 }
 
 int main(int argc, char **argv) {
-  testFunc();
+  vector<string> key_vec = gen_keys();
+  string n =        key_vec[0];
+  string pub_key =  key_vec[1];
+  string priv_key = key_vec[2];
+  string msg = "ABCDEzxcvm";
+  rsa_encrypt(msg, pub_key, n);
 
-  // Initialize Qt toolkit
-  QApplication app(argc,argv);
+  // // Initialize Qt toolkit
+  // QApplication app(argc,argv);
 
-  QCA::Initializer qcainit;
+  // QCA::Initializer qcainit;
 
-  // Create a UDP network socket
-  NetSocket* sock = new NetSocket(QCoreApplication::arguments());
-  if (!sock->bind())
-    exit(1);
+  // // Create a UDP network socket
+  // NetSocket* sock = new NetSocket(QCoreApplication::arguments());
+  // if (!sock->bind())
+  //   exit(1);
 
-  // Create an initial chat dialog window
-  ChatDialog dialog(sock);
-  sock->dialog = &dialog;
-  dialog.show();
-  sock->routeRumor();
+  // // Create an initial chat dialog window
+  // ChatDialog dialog(sock);
+  // sock->dialog = &dialog;
+  // dialog.show();
+  // sock->routeRumor();
 
-  // Enter the Qt main loop; everything else is event driven
-  return app.exec();
+  // // Enter the Qt main loop; everything else is event driven
+  // return app.exec();
 }
 
