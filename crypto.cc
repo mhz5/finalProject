@@ -5,7 +5,7 @@
 
 
 // Size of the RSA modulus in bits.
-#define BITSTRENGTH 64
+#define BITSTRENGTH 512
 #define PUBLIC_EXPONENT 65537
 // Break message up into chunks of this size.
 #define MSG_CHUNK_LENGTH 100
@@ -109,6 +109,7 @@ string fast_modular_exp(mpz_class base, mpz_class exp, mpz_class mod) {
 	mpz_class temp = 1;
 
 	while (i < exp) {
+		qDebug() << i.get_str(10).c_str();
 		i += 1;
 		temp = (base * temp) % mod;
 
@@ -125,25 +126,43 @@ string encode_chunk(string chunk) {
 		return NULL;
 
 	// Add 1 for the terminating null char, and 1 for the prepended padding.
-	char msg_str[3 * MSG_CHUNK_LENGTH + 2] = {0};
+	vector<char> code;
 
-	msg_str[0] = '1';
+	code.push_back('1');
 	for (uint i = 0; i < chunk.length(); i++) {
  		string cur_char = to_string((int) chunk[i]).c_str();
+ 		// qDebug() << cur_char.c_str();
  		if (cur_char.length() < 3) {
- 			msg_str[3 * i + 1] = '0';
- 			msg_str[3 * i + 2] = cur_char[0];
- 			msg_str[3 * i + 3] = cur_char[1];
+ 			code.push_back('0');
+ 			code.push_back(cur_char[0]);
+ 			code.push_back(cur_char[1]);
  		}
  		else {
- 			msg_str[3 * i + 1] = cur_char[0];
- 			msg_str[3 * i + 2] = cur_char[1];
- 			msg_str[3 * i + 3] = cur_char[2];
+ 			code.push_back(cur_char[0]);
+ 			code.push_back(cur_char[1]);
+ 			code.push_back(cur_char[2]);
  		}
-		// qDebug() << msg_str;
 	}
 
-	return msg_str;
+	return string(code.data());
+}
+
+string decode_chunk(string chunk) {
+	chunk = chunk.substr(1, chunk.length());
+
+	int len = chunk.length();
+	if (len % 3 != 0)
+		return NULL;
+	
+	vector<char> msg;
+
+	for (uint i = 0; i < chunk.length(); i++) {
+		string cur_char = chunk.substr(i, 3);
+		char c = (char) stoi(cur_char, NULL, 10);
+		msg.push_back(c);
+	}
+
+	return string(msg.data());
 }
 
 // Encrypt msg using RSA encryption algorithm.
@@ -151,12 +170,12 @@ string rsa_encrypt(string msg, string pub_key, string prod) {
 	mpz_class e = mpz_class(pub_key);
 	mpz_class n = mpz_class(prod);
 	
-	string encode_msg = "";
+	string encoded_msg;
 
 	for (uint i = 0; i < msg.length(); i += MSG_CHUNK_LENGTH) 
-		encode_msg.append(encode_chunk(msg.substr(i, MSG_CHUNK_LENGTH)));	
+		encoded_msg.append(encode_chunk(msg.substr(i, MSG_CHUNK_LENGTH)));	
 	
-	mpz_class m = mpz_class(encode_msg);
+	mpz_class m = mpz_class(encoded_msg);
 	qDebug() << "Encoded message (pre-encryption): " << QString(m.get_str(10).c_str());
 
 	string res = fast_modular_exp(m, e, n);
@@ -164,7 +183,13 @@ string rsa_encrypt(string msg, string pub_key, string prod) {
 	return res;
 }
 
-string rsa_decrypt(string key, string code) {
-	return "a";
+string rsa_decrypt(string code, string priv_key, string prod) {
+	mpz_class c = mpz_class(code);
+	mpz_class e = mpz_class(priv_key);
+	mpz_class n = mpz_class(prod);
+
+	string res = fast_modular_exp(c, e, n);
+	qDebug() << "Decrypted message: " << QString(res.c_str());
+	return res;
 }
 	

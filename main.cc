@@ -1126,8 +1126,10 @@ int main(int argc, char **argv) {
   string n =        key_vec[0];
   string pub_key =  key_vec[1];
   string priv_key = key_vec[2];
-  string msg = "ABCDEzxcvm";
-  rsa_encrypt(msg, pub_key, n);
+  string msg = "A";
+  
+  string encrypted_msg = rsa_encrypt(msg, pub_key, n);
+  // rsa_decrypt(encrypted_msg, priv_key, n);
 
   // // Initialize Qt toolkit
   // QApplication app(argc,argv);
