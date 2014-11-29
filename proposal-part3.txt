@@ -1,0 +1,1 @@
+The proposal for part 3 is to complete all parts from parts 1 and 2 that have not yet been implemented.
