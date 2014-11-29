@@ -11,6 +11,10 @@
 
 #include "main.hh"
 
+// RSA encryption of private messages
+#include "crypto.cc"
+#include "crypto.hh"
+
 // resend block requests
 
 PrivDialog::PrivDialog(ChatDialog* dialog, QString origin, NetSocket* sock) {
@@ -1113,28 +1117,35 @@ void NetSocket::rumorTimeout() {
 
     if (map != NULL) {
       rumor(map);
-    }
+    }  
   }
 }
 
 int main(int argc, char **argv) {
-  // Initialize Qt toolkit
-  QApplication app(argc,argv);
+  vector<string> key_vec = gen_keys();
+  string n =        key_vec[0];
+  string pub_key =  key_vec[1];
+  string priv_key = key_vec[2];
+  string msg = "ABCDEzxcvm";
+  rsa_encrypt(msg, pub_key, n);
 
-  QCA::Initializer qcainit;
+  // // Initialize Qt toolkit
+  // QApplication app(argc,argv);
 
-  // Create a UDP network socket
-  NetSocket* sock = new NetSocket(QCoreApplication::arguments());
-  if (!sock->bind())
-    exit(1);
+  // QCA::Initializer qcainit;
 
-  // Create an initial chat dialog window
-  ChatDialog dialog(sock);
-  sock->dialog = &dialog;
-  dialog.show();
-  sock->routeRumor();
+  // // Create a UDP network socket
+  // NetSocket* sock = new NetSocket(QCoreApplication::arguments());
+  // if (!sock->bind())
+  //   exit(1);
 
-  // Enter the Qt main loop; everything else is event driven
-  return app.exec();
+  // // Create an initial chat dialog window
+  // ChatDialog dialog(sock);
+  // sock->dialog = &dialog;
+  // dialog.show();
+  // sock->routeRumor();
+
+  // // Enter the Qt main loop; everything else is event driven
+  // return app.exec();
 }
 

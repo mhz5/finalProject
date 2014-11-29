@@ -1,0 +1,8 @@
+main.o
+moc_main.cpp
+moc_main.o
+peerster
+.gitignore.swp
+gmp
+6.0.0-gmp
+
