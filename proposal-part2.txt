@@ -1,5 +1,11 @@
-The third part of our final project will involve adding to Peerster by implementing
-challenge exercises from lab 3. We plan to implement some of the following:
+The part 2 proposal of our final project is to continue implementing the parts 
+mentioned in the initial specification.  These are:
+
+-Implementing the Credence reputation system
+-Using cryptography to encode and decode messages sent
+-Developing & Implementing a barrier to entry.
+
+If we have time, we may implement some of the following:
 
 - Adding a feature such that if the user picks a directory to share, our Peerster
 recursively shares all files in that directory.
@@ -9,5 +15,4 @@ recursively shares all files in that directory.
 - Adding support for more types of searches: recognizing special words "and" and
   "or", to allow users to specify searches like "foo and bar", or "foo or bar".
 
-Finally, building off of the Credence reputation system we plan to implement a
-system where a user can view files that are above a certain Credence rating.
+- Implement a system where a user can view files that are above a certain Credence rating.

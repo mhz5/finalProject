@@ -1,7 +1,7 @@
 //http://alumni.cs.ucr.edu/~anirban/Anir%20-%20NCW03.pdf
 
 #include "gmp/gmpxx.h"
-
+#include "gmp/gmp.h"
 
 
 // Size of the RSA modulus in bits.
