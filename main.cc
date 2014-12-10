@@ -1,3 +1,4 @@
+#include <cmath>
 #include <unistd.h>
 
 #include <QApplication>
@@ -417,7 +418,11 @@ NetSocket::NetSocket(QStringList args) {
 }
 
 void NetSocket::sendDownloadRequest(QListWidgetItem* item) {
-  QString fileName = item->text();
+  QString fileNameScore = item->text();  // of format: Block.txt (1.0)
+  qDebug() << "fileNameScore is: " << fileNameScore;
+  QString fileName = fileNameScore.left(fileNameScore.indexOf("(")).trimmed();
+  qDebug() << "fileName is: " << fileName;
+
   ResultData resultData = resultMap->at(fileName);
   const QString dest = resultData.uploaderDest;
   QByteArray hash = resultData.hash;
@@ -879,6 +884,98 @@ void NetSocket::readMessage() {
   }
 }
 
+int NetSocket::voted(QString voter, QString uploader, QString filename) {
+  // returns 1 or 0 if voted.  (1 for yes vote, 0 for no vote.  But returns -1
+  // if voter didn't vote on this file.)
+  UploaderFileVote ufv = votingHistory->value(voter);
+  if (ufv.count(uploader) == 0) {
+    return -1;
+  } else {
+    FileVote fv = ufv.value(uploader);
+    if (fv.count(filename) == 0) {
+      return -1;
+    } else {
+      return fv.value(filename);
+    }
+  }
+}
+
+void addOverlappingFile(QMap<QString, QList<QString>>* S, QString uploader,
+                        QString filename) {
+  if (S->count(uploader) == 0) {
+    QList<QString> list;
+    list.append(filename);
+    S->insert(uploader, list);
+  } else {
+    QList<QString> list = S->value(uploader);
+    list.append(filename);
+  }
+}
+
+double NetSocket::similarity(QString voter) {
+  // Compile S, the set of overlapping files.  Maps UPLOADER to LIST of FILES
+  QMap<QString, QList<QString>> S;
+  int Ssize = 0;
+  int a = 0;       // num I vote yes
+  int b = 0;       // num he vote yes
+  int posaggr = 0; // num both vote yes
+  UploaderFileVote myUFV = votingHistory->value(*(dialog->myOriginID));
+  UploaderFileVote hisUFV = votingHistory->value(voter);
+  UploaderFileVote::iterator ufvi;
+  for (ufvi = myUFV.begin(); ufvi != myUFV.end(); ufvi++) {
+    QString uploader = ufvi.key();
+    FileVote myFV = ufvi.value();
+    if (hisUFV.count(uploader) != 0) {
+      FileVote hisFV = hisUFV.value(uploader);
+      FileVote::iterator fvi;
+      for (fvi = myFV.begin(); fvi != myFV.end(); fvi++) {
+        QString filename = fvi.key();
+        if (hisFV.count(filename) != 0) {
+          if (fvi.value() == 1) a++;
+          if (hisFV.value(filename) == 1) b++;
+          if (fvi.value() == 1 && hisFV.value(filename) == 1) posaggr++;
+          Ssize++;
+          addOverlappingFile(&S, uploader, filename);
+        }
+      }
+    }
+  }
+
+  if (Ssize == 0 || a == Ssize || b == Ssize) return -2;
+  double p = posaggr / Ssize;
+  double afrac = a / Ssize; 
+  double bfrac = b / Ssize;
+  double thetaNum = p - afrac * bfrac;
+  double thetaDen = sqrt(afrac * (1 - afrac) * bfrac * (1 - bfrac));
+  double theta = thetaNum / thetaDen;
+  if (theta > 1 || theta < -1) {
+    qDebug() << "Invalid value for theta: " << theta;
+  }
+  return theta;
+}
+
+double NetSocket::calculateScore(QString uploader, QString filename) {
+  double num = 0;
+  double den = 0;
+
+  VotingHistory::iterator vhi;
+  for (vhi = votingHistory->begin(); vhi != votingHistory->end(); vhi++) {
+    QString voter = vhi.key();
+    // 1 (upvote) or 0 (downvote) if voted, -1 if not voted
+    int vote = voted(voter, uploader, filename);
+    if (voter != *(dialog->myOriginID) && vote != -1) {
+      double theta = similarity(voter);
+      if (theta != -2) {  // theta would be -2 if undefined somehow
+        den += abs(theta);
+        num += vote * theta;
+      }
+    }
+  }
+
+  if (den == 0) return -2;  // indicates that there isn't enough vote data
+  return num / den;
+}
+
 // By this point I already know it's for me.
 void NetSocket::handleSearchReply(QVariantMap* map) {
   if (map->value(*searchReplyKey).toString() == searchText) {
@@ -892,7 +989,17 @@ void NetSocket::handleSearchReply(QVariantMap* map) {
             map->value(*matchIDsKey).toByteArray());
         data.uploaderDest = map->value(*originKey).toString();
         resultMap->insert(make_pair(fileName, data));
-        new QListWidgetItem(fileName, dialog->searchResults);
+        QString fileNameScore;
+        fileNameScore.append(fileName);
+        double score = calculateScore(data.uploaderDest, fileName);
+        if (score != -2) {
+          fileNameScore.append(" (");
+          fileNameScore.append(QString::number(score));
+          fileNameScore.append(")");
+        } else {
+          fileNameScore.append(" (No score available).");
+        }
+        new QListWidgetItem(fileNameScore, dialog->searchResults);  // Vote score in parens
       }
     }
   }
@@ -900,9 +1007,8 @@ void NetSocket::handleSearchReply(QVariantMap* map) {
 
 QByteArray NetSocket::getByteArraySubset(int i, QByteArray b) {
   QByteArray c;
-  int ix20 = 20 * i;
   for (int j = 0; j < 20; ++j) {
-    c.append(b.at(ix20 + j));
+    c.append(b.at(20 * i + j));
   }
   return c;
 }

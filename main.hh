@@ -131,10 +131,11 @@ public:
   void addPeer(QString);
   void addVote(QString voter, QString uploader, QString filename, int res);
   bool bind();
+  double calculateScore(QString uploader, QString filename);
+  void distributeSearchQuery(QVariantMap* map);
   Peer* findOrAddPeer(QHostAddress address, quint16 port);
   QVariantList findQueryMatches(QString query);
   Peer* getRandomPeer();
-  void distributeSearchQuery(QVariantMap* map);
   QByteArray getByteArraySubset(int i, QByteArray b);
   void handleBlockReply(QVariantMap* map);
   void handleForwardable(QVariantMap* map, QString orig);
@@ -173,9 +174,11 @@ public:
   void sendVH(Peer* peer, int tag);
   void sendSearchReply(QVariantMap* map, QVariantList fileMatches);
   void sendStatusMessage(Peer* peer);
+  double similarity(QString voter);
   QList<QVariant> stripPaths(QList<QVariant> list);
   void updateDest(Destination*, QHostAddress addr, quint16 port, quint32 seqno);
   void updateVH(VotingHistory* vh);
+  int voted(QString voter, QString uploader, QString filename);
   bool wantRumorMessage(QVariantMap* map);
 
   atomic< queue< QVariantMap*>*> incomingRQ;
