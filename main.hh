@@ -35,6 +35,17 @@ typedef map< const QString, vector<QString> > MessageList;
 typedef map< const QString, quint16> HNLookupList;
 typedef map< const QString, ResultData> ResultMap;
 
+// For any peers A and B, there is a FileVote indicating the results of all votes
+// by peer A on peer B's files.
+typedef QMap< QString, int> FileVote;
+
+// For any peer, this maps the file uploader to a list of files voted by the peer,
+// and + or -1 for each file.
+typedef QMap< QString, FileVote> UploaderFileVote;
+
+// Maps peer to an UploaderFileVote.  Covers everything.
+typedef QMap< QString, UploaderFileVote> VotingHistory;
+
 // Value in the hash tree.
 class FileData {
 public:
@@ -62,6 +73,17 @@ public:
   NetSocket *sock;
   QTextEdit *textline;
   QTextEdit *textview;
+};
+
+class VoteDialog : public QDialog {
+  Q_OBJECT
+
+public:
+  VoteDialog();
+
+public slots:
+  void upvoted();
+  void downvoted();
 };
 
 class ChatDialog : public QDialog {
@@ -107,6 +129,7 @@ public:
   NetSocket(QStringList);
 
   void addPeer(QString);
+  void addVote(QString voter, QString uploader, QString filename, int res);
   bool bind();
   Peer* findOrAddPeer(QHostAddress address, quint16 port);
   QVariantList findQueryMatches(QString query);
@@ -123,6 +146,7 @@ public:
   void handleSearchReply(QVariantMap* map);
   void handleSearchRequest(QString text);
   void handleStatusMessage(QVariantMap* map, Peer* peer, quint16 port);
+  void handleVoteHistory(QVariantMap* map, Peer* peer);
   bool isBlockReply(QVariantMap* map);
   bool isBlockRequest(QVariantMap* map);
   bool isNewRumor(QVariantMap* map);
@@ -133,8 +157,10 @@ public:
   bool isSearchReply(QVariantMap* map);
   bool isSearchRequest(QVariantMap* map);
   bool isStatusMessage(QVariantMap* map);
+  bool isVoteHistory(QVariantMap* map);
   QVariantMap* makeMyRumorMap(const QString* text, const QString* orig,
                               bool priv);
+  void openVoteDialog();
   void rumor(QVariantMap* map);
   void sendBlockReply(QVariantMap* map);
   void sendBlockRequest(const QString* dest, QString orig, quint32 hopLimit,
@@ -144,10 +170,12 @@ public:
   void sendMap(QVariantMap* map, Peer* peer);
   void sendRumor(Peer* peer, QString text, QString orig,
       quint32 seqno);
+  void sendVH(Peer* peer, int tag);
   void sendSearchReply(QVariantMap* map, QVariantList fileMatches);
   void sendStatusMessage(Peer* peer);
   QList<QVariant> stripPaths(QList<QVariant> list);
   void updateDest(Destination*, QHostAddress addr, quint16 port, quint32 seqno);
+  void updateVH(VotingHistory* vh);
   bool wantRumorMessage(QVariantMap* map);
 
   atomic< queue< QVariantMap*>*> incomingRQ;
@@ -163,6 +191,7 @@ public:
   ResultMap* resultMap;
   QByteArray fileAccumulating;
   QByteArray metafileOfRequestedBlock;
+  QString curUploader;
   QString hashOfRequestedBlock;
   QString nameOfRequestedFile;
   QString searchText;
@@ -171,10 +200,12 @@ public:
   quint16 myPortMin, myPortMax, myPort;
   quint32 searchBudget;
   vector<Peer*> peers;
+  VoteDialog* curvd;
   QVariantMap* requestMap;
   Destination* requestDest;
   bool requestingBlock;
   QTimer* brTimer;
+  VotingHistory* votingHistory;
 
   const QString* blockRequestKey;
   const QString* blockReplyKey;
@@ -191,6 +222,8 @@ public:
   const QString* searchReplyKey;
   const QString* searchRequestKey;
   const QString* seqNoKey;
+  const QString* tagKey;
+  const QString* vhKey;
   const QString* wantKey;
 
 public slots:
@@ -201,6 +234,7 @@ public slots:
   void rumorTimeout();
   void sendMapBlockRequest();
   void sendSearch();
+  void tabulateVote();
 
 private:
   atomic<quint16> portWaitingFor;

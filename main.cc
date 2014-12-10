@@ -5,6 +5,8 @@
 #include <QFileDialog>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QPushButton>
+#include <QRadioButton>
 #include <QtCrypto>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -15,7 +17,7 @@
 #include "crypto.cc"
 #include "crypto.hh"
 
-// resend block requests
+Q_DECLARE_METATYPE(VotingHistory);
 
 PrivDialog::PrivDialog(ChatDialog* dialog, QString origin, NetSocket* sock) {
   // 'Enter' detection for text entry box.
@@ -81,6 +83,31 @@ bool PrivKeyEnterReceiver::eventFilter(QObject *obj, QEvent *event) {
   }
 
   return false;
+}
+
+VoteDialog::VoteDialog() {
+  setWindowTitle("File Evaluation");
+  QLabel *voteTextLabel = new QLabel("Please vote on the downloaded file.");
+
+  QPushButton *goodFile = new QPushButton("I liked this file!");
+  connect(goodFile, SIGNAL(clicked()), this, SLOT(upvoted()));
+
+  QPushButton *badFile = new QPushButton("I didn't like this file!");
+  connect(badFile, SIGNAL(clicked()), this, SLOT(downvoted()));
+
+  QVBoxLayout *layout = new QVBoxLayout();
+  layout->addWidget(voteTextLabel);
+  layout->addWidget(goodFile);
+  layout->addWidget(badFile);
+  setLayout(layout);
+}
+
+void VoteDialog::upvoted() {
+  accept();
+}
+
+void VoteDialog::downvoted() {
+  reject();
 }
 
 bool ChatKeyEnterReceiver::eventFilter(QObject *obj, QEvent *event) {
@@ -334,6 +361,12 @@ NetSocket::NetSocket(QStringList args) {
   wantKey = new QString("Want");
   lastIPKey = new QString("LastIP");
   lastPortKey = new QString("LastPort");
+
+  // if tagKey = 1, then that means I'm sending a routing table and I want a
+  // response routing table.  If tagKey = 2, that means I'm sending a routing
+  // table but don't want one in reply.
+  tagKey = new QString("Tag");
+  vhKey = new QString("vhKey");
   routingTable = new QHash< QString, Destination*>();
   portWaitingFor = 0;
   forwarding = true;
@@ -344,6 +377,7 @@ NetSocket::NetSocket(QStringList args) {
   blocksRemaining = -1;
   nameOfRequestedFile = "";
   resultMap = new ResultMap();
+  votingHistory = new VotingHistory();
 
   // Pick a range of four UDP ports to try to allocate by default, computed
   // based on my Unix user ID. This makes it trivial for up to four Peerster
@@ -713,6 +747,11 @@ bool NetSocket::isStatusMessage(QVariantMap* map) {
   return (map->size() == 1 && map->contains(*wantKey));
 }
 
+bool NetSocket::isVoteHistory(QVariantMap* map) {
+  return (map->size() == 2 && map->contains(*vhKey)
+      && map->contains(*tagKey));
+}
+
 void NetSocket::handleStatusMessage(QVariantMap* map, Peer* peer, 
     quint16 port) {
   if (portWaitingFor == port && IPwaitingFor == peer->IP) {
@@ -776,6 +815,41 @@ void NetSocket::handleStatusMessage(QVariantMap* map, Peer* peer,
   }
 }
 
+void NetSocket::updateVH(VotingHistory* vh) {
+  VotingHistory::iterator vhi;
+  for (vhi = vh->begin(); vhi != vh->end(); ++vhi) {
+    QString voter = vhi.key();
+    UploaderFileVote ufv = vhi.value();
+    if (votingHistory->count(voter) == 0) {
+      votingHistory->insert(voter, ufv);
+    } else {
+      UploaderFileVote myUFV = votingHistory->value(voter);
+      UploaderFileVote::iterator ufvi;
+      for (ufvi = ufv.begin(); ufvi != ufv.end(); ++ufvi) {
+        QString uploader = ufvi.key();
+        FileVote fv = ufvi.value();
+        if (myUFV.count(uploader) == 0) {
+          myUFV.insert(uploader, fv);
+        } else {
+          FileVote::iterator fvi;
+          for (fvi = fv.begin(); fvi != fv.end(); ++fvi) {
+            addVote(voter, uploader, fvi.key(), fvi.value());
+          }
+        }
+      }
+    }
+  }
+}
+
+void NetSocket::handleVoteHistory(QVariantMap* map, Peer* peer) {
+  VotingHistory vh = map->value(*vhKey).value<VotingHistory>();
+  updateVH(&vh);
+  int tag = map->value(*tagKey).toInt();
+  if (tag == 1) {
+    sendVH(peer, 2);  // Tag of 2 means that I don't want a vh back.
+  }
+}
+
 void NetSocket::readMessage() {
   if (hasPendingDatagrams()) {
     QByteArray buf(pendingDatagramSize(), Qt::Uninitialized);
@@ -797,6 +871,8 @@ void NetSocket::readMessage() {
       handleIncomingSearchRequest(map);
     } else if (isRumorWithText(map) || isRouteRumor(map)) {
       handleIncomingRumorMsg(map, orig, address, port, peer);
+    } else if (isVoteHistory(map)) {
+      handleVoteHistory(map, peer);
     } else if (isStatusMessage(map)) {
       handleStatusMessage(map, peer, port);
     }
@@ -963,6 +1039,44 @@ void NetSocket::handleIncomingRumorMsg(QVariantMap* map, QString orig,
   sendStatusMessage(peer);
 }
 
+void NetSocket::addVote(QString voter, QString uploader, QString filename,
+                        int res) {  // res = 1 if upvote, 0 if downvote
+  UploaderFileVote ufv;
+  if (votingHistory->count(voter) != 0) {
+    ufv = votingHistory->value(voter);
+  }
+
+  FileVote fv;
+  if (ufv.count(uploader) != 0) {
+    fv = ufv.value(uploader);
+  }
+
+  fv.insert(filename, res);
+
+  if (ufv.count(uploader) == 0) {
+    ufv.insert(uploader, fv);
+  }
+  if (votingHistory->count(uploader) == 0) {
+    votingHistory->insert(voter, ufv);
+  }
+}
+
+void NetSocket::sendVH(Peer* peer, int tag) {
+  QVariantMap* map = new QVariantMap();
+  map->insert(*tagKey, tag);  // 1 means I want reply. 2 means no reply.
+  map->insert(*vhKey, QVariant::fromValue(*votingHistory));
+  sendMap(map, peer);
+}
+
+void NetSocket::tabulateVote() {
+  addVote(*(dialog->myOriginID), curUploader, nameOfRequestedFile,
+          curvd->result());
+  int tag = 1;
+  for (Peer* peer : peers) {
+    sendVH(peer, tag);
+  }
+}
+
 void NetSocket::handleBlockReply(QVariantMap* map) {
   // Check if hash of "Data" value matches the "BlockReply" value.
   QByteArray data = map->value(*dataKey).toByteArray();
@@ -1007,6 +1121,12 @@ void NetSocket::handleBlockReply(QVariantMap* map) {
         file.open(QIODevice::WriteOnly);
         file.write(fileAccumulating);
         file.close();
+
+        VoteDialog* vd = new VoteDialog();
+        this->curvd = vd;
+        this->curUploader = destOrigin;
+        connect(vd, SIGNAL(finshed()), this, SLOT(tabulateVote()));
+        vd->show();
       }
     } else {
       qDebug() << "Not requesting metafile or data block (or requesting both).";
