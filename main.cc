@@ -26,7 +26,7 @@ PrivDialog::PrivDialog(ChatDialog* dialog, QString origin, NetSocket* sock) {
   this->origin = origin;
   this->sock = sock;
   this->cDialog = dialog;
-
+  
   setWindowTitle(origin);
 
   // Read-only text box where we display messages from everyone.
@@ -44,20 +44,48 @@ PrivDialog::PrivDialog(ChatDialog* dialog, QString origin, NetSocket* sock) {
   layout->addWidget(textview);
   layout->addWidget(textline);
   setLayout(layout);
+  
+  // Send cryptographic keys to peer.
+  const QString blank = QString("");
+  QString temp = QString("");
+  QVariantMap *crypto_map = sock->makeMyRumorMap(&blank, &origin, true);
+  // QVariantMap *crypto_map = new QVariantMap();
+  crypto_map->insert("N", QString((dialog->n).c_str()));
+  crypto_map->insert("PublicKey", QString((dialog->pub_key).c_str()));
+  crypto_map->insert(QString("Crypto"), "Crypto");
+  
+  QHash< QString, Destination*>* table = sock->routingTable;
+  Destination* dest = table->value(origin);
+  Peer peer;
+  peer.IP = dest->IP;
+  peer.port = dest->port;
+  sock->sendMap(crypto_map, &peer);
 }
 
 void PrivDialog::privMsgEntered() {
   QString text = textline->toPlainText();
-  if (text.length() > 0) {
-    const QString trimmedText = text.trimmed().replace("\n", "");
-    QVariantMap* map = sock->makeMyRumorMap(&trimmedText, &origin, true);
+  // If user inputting only a newline, eliminate it.
+  if (QString::compare(QString("\n"), text, Qt::CaseInsensitive) == 0)
+    textline->clear();
+  else if (text.length() > 0) {
+    string trimmedText = text.trimmed().replace("\n", "").toUtf8().constData();
+
+    string pub_key = this->cDialog->cryptoKeys->value(origin).first.toUtf8().constData();
+    string n = this->cDialog->cryptoKeys->value(origin).second.toUtf8().constData();
+    // qDebug() << "trimmed Text: " << trimmedText.c_str();
+    // qDebug() << "public key: " << pub_key.c_str();
+    // qDebug() << "N: " << n.c_str();
+
+    const QString encrypted_msg = QString::fromUtf8(rsa_encrypt(trimmedText, pub_key, n).c_str());
+
+    QVariantMap* map = sock->makeMyRumorMap(&encrypted_msg, &origin, true);
     Destination* dest = sock->routingTable->value(origin);
     Peer peer;
     peer.IP = dest->IP;
     peer.port = dest->port;
     sock->sendMap(map, &peer);
 
-    textview->append(trimmedText);
+    textview->append(trimmedText.c_str());
     // Before clearing 'textline', check if its length is 0 to avoid calling
     // this function infinitely many times.
     if (text.length() != 0) {
@@ -101,6 +129,18 @@ bool ChatKeyEnterReceiver::eventFilter(QObject *obj, QEvent *event) {
 }
 
 ChatDialog::ChatDialog(NetSocket* sock) {
+  // Generate cryptographic keys for RSA
+  vector<string> key_vec = gen_keys();
+  n =        key_vec[0];
+  pub_key =  key_vec[1];
+  priv_key = key_vec[2];
+
+  qDebug() << "New Public Key: " << pub_key.c_str();
+  qDebug() << "New Private Key: " << priv_key.c_str();
+  qDebug() << "N = p * q: " << n.c_str();
+
+  this->cryptoKeys = new QHash<QString, QPair<QString, QString> >();
+
   // 'Enter' detection for text entry box.
   key = new ChatKeyEnterReceiver();
   installEventFilter(key);
@@ -322,6 +362,7 @@ NetSocket::NetSocket(QStringList args) {
   blockRequestKey = new QString("BlockRequest");
   budgetKey = new QString("Budget");
   chatTextKey = new QString("ChatText");
+  cryptoKey = new QString("Crypto");
   dataKey = new QString("Data");
   destKey = new QString("Dest");
   hopLimitKey = new QString("HopLimit");
@@ -464,7 +505,7 @@ bool NetSocket::bind() {
   for (quint16 p = myPortMin; p <= myPortMax; p++) {
     if (QUdpSocket::bind(p)) {
       myPort = p;
-	    qDebug() << "bound to UDP port " << p;
+      qDebug() << "bound to UDP port " << p;
 
       // Add in the default peers as soon as I know my port.
       for (quint16 i = 1; i < 4; ++i) {
@@ -685,6 +726,10 @@ bool NetSocket::isPrivRumor(QVariantMap* map) {
       && map->contains(*hopLimitKey));
 }
 
+bool NetSocket::isCryptoMsg(QVariantMap* map) {
+  return map->contains(*cryptoKey) || map->contains("Crypto");
+}
+
 bool NetSocket::isBlockReply(QVariantMap* map) {
   return (map->size() == 5 && map->contains(*destKey)
       && map->contains(*originKey) && map->contains(*hopLimitKey)
@@ -788,8 +833,9 @@ void NetSocket::readMessage() {
 
     Peer* peer = findOrAddPeer(address, port);
     QString orig = map->value(*originKey).toString();
-
-    if (isPrivRumor(map) || isBlockRequest(map) || isBlockReply(map) ||
+    
+    // qDebug() << *map;
+    if (isPrivRumor(map) || isCryptoMsg(map) || isBlockRequest(map) || isBlockReply(map) ||
         isSearchReply(map)) {
       handleForwardable(map, orig);
     } else if (isSearchRequest(map)
@@ -844,6 +890,7 @@ void NetSocket::handleIncomingSearchRequest(QVariantMap* map) {
 
 void NetSocket::handleForwardable(QVariantMap* map, QString orig) {
   QString destOrigin = map->value(*destKey).toString();
+  
   if (destOrigin.compare(*(dialog->myOriginID)) != 0) {
     // Private message / block request not for me.
     if (forwarding) {
@@ -855,10 +902,27 @@ void NetSocket::handleForwardable(QVariantMap* map, QString orig) {
         }
       }
     }
-  } else if (isPrivRumor(map)) {
+  } else if (isPrivRumor(map) || isCryptoMsg(map)) {
       dialog->openPrivateMsgWindow(orig);
-      QString text = map->value(*chatTextKey).toString();
-      dialog->privMsgs->value(orig)->textview->append(text);
+
+      
+      // If this message is delivering cryptographic keys.
+      if (isCryptoMsg(map)){
+        QPair<QString, QString> pair = qMakePair(map->value("PublicKey").toString(), QString(map->value("N").toString()));
+        // Store the public key from peer at orig.
+        dialog->cryptoKeys->insert(orig, pair);
+
+        // qDebug() << "Public Key: " << map->value("PublicKey").toString() << "\n\n\nN: " << map->value("N").toString();
+      } else {
+        QString encrypted_msg = map->value(*chatTextKey).toString();
+        string priv_key = dialog->priv_key;
+        string n = dialog->n;
+        string decrypted_msg = rsa_decrypt(encrypted_msg.toUtf8().constData(), priv_key, n);
+
+        dialog->privMsgs->value(orig)->textview->append(decrypted_msg.c_str());
+      }
+
+
   } else if (isBlockRequest(map)) {
     qDebug() << "Received block request, sending block reply.";
     sendBlockReply(map);
@@ -1122,32 +1186,25 @@ void NetSocket::rumorTimeout() {
 }
 
 int main(int argc, char **argv) {
-  vector<string> key_vec = gen_keys();
-  string n =        key_vec[0];
-  string pub_key =  key_vec[1];
-  string priv_key = key_vec[2];
-  string msg = "A";
-  
-  string encrypted_msg = rsa_encrypt(msg, pub_key, n);
-  // rsa_decrypt(encrypted_msg, priv_key, n);
+  srand(time(0));
 
-  // // Initialize Qt toolkit
-  // QApplication app(argc,argv);
+  // Initialize Qt toolkit
+  QApplication app(argc,argv);
 
-  // QCA::Initializer qcainit;
+  QCA::Initializer qcainit;
 
-  // // Create a UDP network socket
-  // NetSocket* sock = new NetSocket(QCoreApplication::arguments());
-  // if (!sock->bind())
-  //   exit(1);
+  // Create a UDP network socket
+  NetSocket* sock = new NetSocket(QCoreApplication::arguments());
+  if (!sock->bind())
+    exit(1);
 
-  // // Create an initial chat dialog window
-  // ChatDialog dialog(sock);
-  // sock->dialog = &dialog;
-  // dialog.show();
-  // sock->routeRumor();
+  // Create an initial chat dialog window
+  ChatDialog dialog(sock);
+  sock->dialog = &dialog;
+  dialog.show();
+  sock->routeRumor();
 
-  // // Enter the Qt main loop; everything else is event driven
-  // return app.exec();
+  // Enter the Qt main loop; everything else is event driven
+  return app.exec();
 }
 
