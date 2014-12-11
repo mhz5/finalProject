@@ -1,6 +1,6 @@
 #include <cmath>
 #include <unistd.h>
-
+//915
 #include <QApplication>
 #include <QDebug>
 #include <QFileDialog>
@@ -860,12 +860,17 @@ int NetSocket::voted(QString voter, QString uploader, QString filename) {
   // if voter didn't vote on this file.)
   UploaderFileVote ufv = votingHistory->value(voter);
   if (ufv.count(uploader) == 0) {
+    qDebug() << "voted: Nothing by this uploader.";
     return 0;
   } else {
     FileVote fv = ufv.value(uploader);
     if (fv.count(filename) == 0) {
+      qDebug() << "voted: No filenames matching for this uploader.";
       return 0;
     } else {
+      if (fv.value(filename) != 1 && fv.value(filename) != -1) {
+        qDebug() << "Error: fv.value(filename) not +- 1.";
+      }
       return fv.value(filename);
     }
   }
@@ -913,12 +918,15 @@ double NetSocket::similarity(QString voter) {
   }
 
   if (Ssize == 0 || a == Ssize || b == Ssize) return -2;
-  double p = posaggr / Ssize;
-  double afrac = a / Ssize; 
-  double bfrac = b / Ssize;
+  double p = (double) posaggr / Ssize;
+  double afrac = (double) a / Ssize; 
+  double bfrac = (double) b / Ssize;
   double thetaNum = p - afrac * bfrac;
   double thetaDen = sqrt(afrac * (1 - afrac) * bfrac * (1 - bfrac));
   double theta = thetaNum / thetaDen;
+  if (thetaDen == 0) {
+    return -2;
+  }
   if (theta > 1 || theta < -1) {
     qDebug() << "Invalid value for theta: " << theta;
   }
@@ -932,16 +940,15 @@ double NetSocket::calculateScore(QString uploader, QString filename) {
   VotingHistory::iterator vhi;
   for (vhi = votingHistory->begin(); vhi != votingHistory->end(); vhi++) {
     QString voter = vhi.key();
-    qDebug() << "voter is: " << voter;
     // 1 (upvote) or -1 (downvote) if voted, 0 if not voted
     int vote = voted(voter, uploader, filename);
-    qDebug() << "Voted " << vote << " on file: " << filename << " by uploader: " << uploader;
     if (voter != *(dialog->myOriginID) && vote != 0) {
       double theta = similarity(voter);
-      qDebug() << "theta is " << theta;
       if (theta != -2) {  // theta would be -2 if undefined somehow
         den += abs(theta);
+        qDebug() << den;
         num += vote * theta;
+        qDebug() << num;
       }
     }
   }
@@ -1120,22 +1127,23 @@ void NetSocket::addVote(QString voter, QString uploader, QString filename,
                         int res) {
   // res = 1 if upvote, 0 if downvote. For simplicity we'll convert res to -1
   // if its 0 to match the rest of the system.
-  UploaderFileVote ufv;
   if (votingHistory->count(voter) != 0) {
-    ufv = votingHistory->value(voter);
-  }
-
-  FileVote fv;
-  if (ufv.count(uploader) != 0) {
-    fv = ufv.value(uploader);
-  }
-
-  fv.insert(filename, (res == 1 ? 1 : -1));
-
-  if (ufv.count(uploader) == 0) {
+    UploaderFileVote ufv = votingHistory->value(voter);
+    if (ufv.count(uploader) != 0) {
+      FileVote fv = ufv.value(uploader);
+      fv.insert(filename, (res == 1 ? 1 : -1));
+      ufv.insert(uploader, fv);
+    } else {
+      FileVote fv;
+      fv.insert(filename, (res == 1 ? 1 : -1));
+      ufv.insert(uploader, fv);
+    }
+    votingHistory->insert(voter, ufv);
+  } else {
+    UploaderFileVote ufv;
+    FileVote fv;
+    fv.insert(filename, (res == 1 ? 1 : -1));
     ufv.insert(uploader, fv);
-  }
-  if (votingHistory->count(uploader) == 0) {
     votingHistory->insert(voter, ufv);
   }
 }
@@ -1167,6 +1175,7 @@ void NetSocket::sendVH(Peer* peer, int tag) {
   QVariantMap* map = new QVariantMap();
   map->insert(*tagKey, tag);  // 1 means I want reply. 2 means no reply.
   QStringList* sl = convertToStringList(votingHistory);
+  qDebug() << "Voting history is: " << *sl;
   map->insert(*vhKey, *sl);
   sendMap(map, peer);
 }
@@ -1174,6 +1183,7 @@ void NetSocket::sendVH(Peer* peer, int tag) {
 void NetSocket::tabulateVote() {
   addVote(*(dialog->myOriginID), curUploader, nameOfRequestedFile,
           curvd->result());
+
   int tag = 1;
   for (Peer* peer : peers) {
     sendVH(peer, tag);
