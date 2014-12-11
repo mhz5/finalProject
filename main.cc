@@ -222,7 +222,6 @@ void ChatDialog::handleButton() {
       fd.metafile.append(QCA::Hash("sha1").hash(f.read(8192)).toByteArray());
       numBytes -= 8192;
     }
-    qDebug() << fd.metafile;
 
     fd.hash.append(QCA::Hash("sha1").hash(fd.metafile).toByteArray());
     fileMap->erase(fileName);
@@ -296,13 +295,10 @@ QByteArray ChatDialog::findBlock(QByteArray blockHash) {
     int numBlocks = metafile.length() / 20;
     for (int i = 0; i < numBlocks; ++i) {
       if (match(metafile, blockHash, i)) {
-        qDebug() << "Getting file block from it->first, which is: " << it->first;
-        qDebug() << "returning: " << getFileBlock(it->first, i);
         return getFileBlock(it->first, i);
       }
     }
   }
-  qDebug () << "findBlock: Couldn't find block hash. Returning empty qbytearray.";
   return QByteArray();
 }
 
@@ -419,14 +415,11 @@ NetSocket::NetSocket(QStringList args) {
 
 void NetSocket::sendDownloadRequest(QListWidgetItem* item) {
   QString fileNameScore = item->text();  // of format: Block.txt (1.0)
-  qDebug() << "fileNameScore is: " << fileNameScore;
   QString fileName = fileNameScore.left(fileNameScore.indexOf("(")).trimmed();
-  qDebug() << "fileName is: " << fileName;
 
   ResultData resultData = resultMap->at(fileName);
   const QString dest = resultData.uploaderDest;
   QByteArray hash = resultData.hash;
-  qDebug() << "Hash of file is: " << hash;
   requestingMetafile = true;
   requestingDataBlock = false;
   nameOfRequestedFile = fileName;
@@ -574,7 +567,6 @@ void NetSocket::sendMap(QVariantMap *map, Peer* peer) {
   QByteArray a;
   QDataStream s(&a, QIODevice::WriteOnly);
   s << *map;
-
   writeDatagram(a, peer->IP, peer->port);
 }
 
@@ -629,7 +621,6 @@ void NetSocket::sendSearchReply(QVariantMap* map, QVariantList fileMatches) {
   // still filled with things like '/c/cs426/home/notes.txt'.  We should replace
   // all those entries with simply the filenames, like 'notes.txt'.
   repMap->insert(*matchNamesKey, stripPaths(fileMatches));
-  qDebug() << "Sending search reply: " << *repMap;
   sendMap(repMap, routingTable->value(repMap->value(*destKey).toString()));
 }
 
@@ -690,7 +681,6 @@ void NetSocket::sendBlockReply(QVariantMap* map) {
 
   const QString dest = map->value(*destKey).toString();
   if (routingTable->contains(dest)) {
-    qDebug() << "Sending block reply: " << *map;
     sendMap(map, routingTable->value(dest));
   }
 }
@@ -820,34 +810,15 @@ void NetSocket::handleStatusMessage(QVariantMap* map, Peer* peer,
   }
 }
 
-void NetSocket::updateVH(VotingHistory* vh) {
-  VotingHistory::iterator vhi;
-  for (vhi = vh->begin(); vhi != vh->end(); ++vhi) {
-    QString voter = vhi.key();
-    UploaderFileVote ufv = vhi.value();
-    if (votingHistory->count(voter) == 0) {
-      votingHistory->insert(voter, ufv);
-    } else {
-      UploaderFileVote myUFV = votingHistory->value(voter);
-      UploaderFileVote::iterator ufvi;
-      for (ufvi = ufv.begin(); ufvi != ufv.end(); ++ufvi) {
-        QString uploader = ufvi.key();
-        FileVote fv = ufvi.value();
-        if (myUFV.count(uploader) == 0) {
-          myUFV.insert(uploader, fv);
-        } else {
-          FileVote::iterator fvi;
-          for (fvi = fv.begin(); fvi != fv.end(); ++fvi) {
-            addVote(voter, uploader, fvi.key(), fvi.value());
-          }
-        }
-      }
-    }
+void NetSocket::updateVH(QStringList* vh) {
+  for (QStringList::iterator i = vh->begin(); i != vh->end(); ++i) {
+    QStringList l = (*i).split(",");
+    addVote(l.at(0), l.at(1), l.at(2), l.at(3).toInt());
   }
 }
 
 void NetSocket::handleVoteHistory(QVariantMap* map, Peer* peer) {
-  VotingHistory vh = map->value(*vhKey).value<VotingHistory>();
+  QStringList vh = map->value(*vhKey).toStringList();
   updateVH(&vh);
   int tag = map->value(*tagKey).toInt();
   if (tag == 1) {
@@ -889,11 +860,11 @@ int NetSocket::voted(QString voter, QString uploader, QString filename) {
   // if voter didn't vote on this file.)
   UploaderFileVote ufv = votingHistory->value(voter);
   if (ufv.count(uploader) == 0) {
-    return -1;
+    return 0;
   } else {
     FileVote fv = ufv.value(uploader);
     if (fv.count(filename) == 0) {
-      return -1;
+      return 0;
     } else {
       return fv.value(filename);
     }
@@ -961,10 +932,13 @@ double NetSocket::calculateScore(QString uploader, QString filename) {
   VotingHistory::iterator vhi;
   for (vhi = votingHistory->begin(); vhi != votingHistory->end(); vhi++) {
     QString voter = vhi.key();
-    // 1 (upvote) or 0 (downvote) if voted, -1 if not voted
+    qDebug() << "voter is: " << voter;
+    // 1 (upvote) or -1 (downvote) if voted, 0 if not voted
     int vote = voted(voter, uploader, filename);
-    if (voter != *(dialog->myOriginID) && vote != -1) {
+    qDebug() << "Voted " << vote << " on file: " << filename << " by uploader: " << uploader;
+    if (voter != *(dialog->myOriginID) && vote != 0) {
       double theta = similarity(voter);
+      qDebug() << "theta is " << theta;
       if (theta != -2) {  // theta would be -2 if undefined somehow
         den += abs(theta);
         num += vote * theta;
@@ -1042,13 +1016,10 @@ void NetSocket::handleForwardable(QVariantMap* map, QString orig) {
       QString text = map->value(*chatTextKey).toString();
       dialog->privMsgs->value(orig)->textview->append(text);
   } else if (isBlockRequest(map)) {
-    qDebug() << "Received block request, sending block reply.";
     sendBlockReply(map);
   } else if (isBlockReply(map)) {
-    qDebug() << "Received block reply.";
     handleBlockReply(map);
   } else if (isSearchReply(map)) {
-    qDebug() << "Received search reply: " << *map;
     handleSearchReply(map);
   }
   return;
@@ -1146,7 +1117,9 @@ void NetSocket::handleIncomingRumorMsg(QVariantMap* map, QString orig,
 }
 
 void NetSocket::addVote(QString voter, QString uploader, QString filename,
-                        int res) {  // res = 1 if upvote, 0 if downvote
+                        int res) {
+  // res = 1 if upvote, 0 if downvote. For simplicity we'll convert res to -1
+  // if its 0 to match the rest of the system.
   UploaderFileVote ufv;
   if (votingHistory->count(voter) != 0) {
     ufv = votingHistory->value(voter);
@@ -1157,7 +1130,7 @@ void NetSocket::addVote(QString voter, QString uploader, QString filename,
     fv = ufv.value(uploader);
   }
 
-  fv.insert(filename, res);
+  fv.insert(filename, (res == 1 ? 1 : -1));
 
   if (ufv.count(uploader) == 0) {
     ufv.insert(uploader, fv);
@@ -1167,10 +1140,34 @@ void NetSocket::addVote(QString voter, QString uploader, QString filename,
   }
 }
 
+QStringList* NetSocket::convertToStringList(VotingHistory* vh) {
+  QStringList* l = new QStringList();
+  VotingHistory::iterator vhi;
+  for (vhi = vh->begin(); vhi != vh->end(); vhi++) {
+    QString voter = vhi.key();
+    UploaderFileVote ufv = vhi.value();
+    UploaderFileVote::iterator ufvi;
+    for (ufvi = ufv.begin(); ufvi != ufv.end(); ufvi++) {
+      QString uploader = ufvi.key();
+      FileVote fv = ufvi.value();
+      FileVote::iterator fvi;
+      for (fvi = fv.begin(); fvi != fv.end(); fvi++) {
+        QString file = fvi.key();
+        QString vote = QString::number(fvi.value());
+        QString elt;
+        elt += voter + "," + uploader + "," + file + "," + vote;
+        l->append(elt);
+      }
+    }
+  }
+  return l;
+}
+
 void NetSocket::sendVH(Peer* peer, int tag) {
   QVariantMap* map = new QVariantMap();
   map->insert(*tagKey, tag);  // 1 means I want reply. 2 means no reply.
-  map->insert(*vhKey, QVariant::fromValue(*votingHistory));
+  QStringList* sl = convertToStringList(votingHistory);
+  map->insert(*vhKey, *sl);
   sendMap(map, peer);
 }
 
@@ -1195,7 +1192,6 @@ void NetSocket::handleBlockReply(QVariantMap* map) {
       && dataHash == blockReply) {
     requestingBlock = false;
     if (requestingMetafile && !requestingDataBlock) {
-      qDebug() << "Got my metafile:" << *map;
       requestingMetafile = false;
       requestingDataBlock = true;
       blocksRemaining = data.size() / 20;
@@ -1209,7 +1205,6 @@ void NetSocket::handleBlockReply(QVariantMap* map) {
                        firstBlock);
       fileAccumulating = QByteArray();
     } else if (!requestingMetafile && requestingDataBlock) {
-      qDebug() << "Got my block:" << *map;
       fileAccumulating.append(data);
       blocksRemaining--;
       if (blocksRemaining > 0) {
@@ -1221,7 +1216,6 @@ void NetSocket::handleBlockReply(QVariantMap* map) {
                          metafileOfRequestedBlock.left(20));
         metafileOfRequestedBlock.remove(0, 20);
       } else if (blocksRemaining == 0) {
-        qDebug() << "No blocks remaining. Writing to file!";
         requestingDataBlock = false;
         QFile file(nameOfRequestedFile);
         file.open(QIODevice::WriteOnly);
@@ -1231,7 +1225,7 @@ void NetSocket::handleBlockReply(QVariantMap* map) {
         VoteDialog* vd = new VoteDialog();
         this->curvd = vd;
         this->curUploader = destOrigin;
-        connect(vd, SIGNAL(finshed()), this, SLOT(tabulateVote()));
+        connect(vd, SIGNAL(finished(int)), this, SLOT(tabulateVote()));
         vd->show();
       }
     } else {

@@ -132,6 +132,7 @@ public:
   void addVote(QString voter, QString uploader, QString filename, int res);
   bool bind();
   double calculateScore(QString uploader, QString filename);
+  QStringList* convertToStringList(VotingHistory* vh) ;
   void distributeSearchQuery(QVariantMap* map);
   Peer* findOrAddPeer(QHostAddress address, quint16 port);
   QVariantList findQueryMatches(QString query);
@@ -177,7 +178,7 @@ public:
   double similarity(QString voter);
   QList<QVariant> stripPaths(QList<QVariant> list);
   void updateDest(Destination*, QHostAddress addr, quint16 port, quint32 seqno);
-  void updateVH(VotingHistory* vh);
+  void updateVH(QStringList* vh);
   int voted(QString voter, QString uploader, QString filename);
   bool wantRumorMessage(QVariantMap* map);
 
