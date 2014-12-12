@@ -18,6 +18,13 @@
 #include "crypto.cc"
 #include "crypto.hh"
 
+#define BTE_PREFIX "sdfjaoew"
+#define BTE_SUFFIX "qwertyqazol"
+#define BTE_SIZE 2621440
+#define BTE_COUNT 10
+
+
+
 Q_DECLARE_METATYPE(VotingHistory);
 
 PrivDialog::PrivDialog(ChatDialog* dialog, QString origin, NetSocket* sock) {
@@ -384,13 +391,26 @@ NetSocket::NetSocket(QStringList args) {
   myPortMin = 32768 + (getuid() % 4096) * 4;
   myPortMax = myPortMin + 3;
 
-  // Add in the peers given in the command line.
+  // Parse the command line arguments:
+  // - Check if this is a "-no-forward" node to prevent message forwarding
+  // - Check if this is a "-seed" node (i.e. first node in the network)
+  // - Add in the peers given in the command line.
   for (int i = 1; i < args.size(); ++i) {
     QString s = args.at(i);
     if (s.at(0) == '-') {
       if (s == "-noforward") {
         qDebug() << "no forwarding detected.";
         forwarding = false;
+      } else if (s == "-seed") {
+        for (int j = 0; j < BTE_COUNT; j++) {
+          QByteArray arr(BTE_SIZE, '\0');
+          for (int k = 0; k < BTE_SIZE; k++) {
+            arr[k] = qrand() % 256;
+          }
+          QFile file(BTE_PREFIX + QString::number(j) + BTE_SUFFIX);
+          file.open(QIODevice::WriteOnly);
+
+        }
       }
     } else {
       addPeer(args.at(i));
