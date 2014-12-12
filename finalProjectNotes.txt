@@ -1,0 +1,25 @@
+Case 1
+A shares files 1, 2, 3
+
+B upvotes 1, downvotes 2, upvotes 3
+
+C upvotes 1, downvotes 2, should view score of 1 for 3.
+
+Case 2
+A shares files 1, 2, 3, 4.
+B upvotes 1, upvotes 2, downvotes 3, downvotes 4.
+C upvotes 1, downvotes 2, upvotes 3.
+
+C should see score of (not available) for 3, and a score of 1 for 4.
+
+Case 3
+A shares files 1, 2, 3.
+B upvotes 1, downvotes 2, upvotes 3.
+C downvotes 1, upvotes 2, upvotes 3.
+D upvotes 1, downvotes 2, (sees score of 0 for 3), upvotes 3.
+
+Should see score of 0 for 3.
+Theta (B, D) = 1.
+Theta (C, D) = -1.
+
+B searches for 3 again, should see score of 0.333 for 3.
