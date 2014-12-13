@@ -116,6 +116,11 @@ public:
   QTextEdit *textview;
   QPushButton *btnDownload;
   QPushButton *btnUnlock;
+  // Cryptographic keys
+  QHash<QString, QPair<QString, QString> > *cryptoKeys;
+  string n;
+  string pub_key;
+  string priv_key;
 
 public slots:
   void handleButton();
@@ -156,6 +161,7 @@ public:
   void handleVoteHistory(QVariantMap* map, Peer* peer);
   bool isBlockReply(QVariantMap* map);
   bool isBlockRequest(QVariantMap* map);
+  bool isCryptoMsg(QVariantMap* map);
   bool isNewRumor(QVariantMap* map);
   bool isNextRumor(QVariantMap* map);
   bool isPrivRumor(QVariantMap* map);
@@ -222,6 +228,7 @@ public:
   const QString* blockReplyKey;
   const QString* budgetKey;
   const QString* chatTextKey;
+  const QString* cryptoKey;
   const QString* dataKey;
   const QString* destKey;
   const QString* hopLimitKey;

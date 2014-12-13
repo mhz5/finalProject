@@ -5,12 +5,10 @@
 
 
 // Size of the RSA modulus in bits.
-#define BITSTRENGTH 64
+#define BITSTRENGTH 512
 #define PUBLIC_EXPONENT 65537
 // Break message up into chunks of this size.
-#define MSG_CHUNK_LENGTH 100
-
-// TODO: Only call srand ONCE!!!
+#define MSG_CHUNK_LENGTH 4
 
 // GCD function for mpz_class large numbers.
 // Source: http://www.math.umn.edu/~garrett/crypto/Code/c++.html
@@ -38,7 +36,6 @@ mpz_class mpz_gcd(mpz_class m, mpz_class n) {
 
 // Generate large prime number.
 string gen_large_prime() {
-	srand(time(0));
 	mpz_class p;
 
 	// Create char arrays to represent large prime p.
@@ -67,8 +64,10 @@ string gen_large_prime() {
 vector<string> gen_keys() {
 	// Find two large primes.
 	mpz_class p, q;
-	p = mpz_class(gen_large_prime(), 10);
-	q = mpz_class(gen_large_prime(), 10);
+	p = mpz_class(gen_large_prime());
+	q = mpz_class(gen_large_prime());
+	
+	// qDebug() << "Primes: " << p.get_str().c_str() << "\n\n\n" << q.get_str().c_str();
 
 	mpz_class n;
 	n = p * q;
@@ -90,6 +89,10 @@ vector<string> gen_keys() {
 	// Find inverse of e (mod x)
 	mpz_invert(inverse, e.get_mpz_t(), x.get_mpz_t());
 	d = mpz_class(inverse);
+	
+	// Test that multiplicative inverse d is correct.
+	// mpz_class inv_test = (d * e) % x;
+	// qDebug() << "INVERT RESULT!!!! " << inv_test.get_str(10).c_str();
 
 	string prod = n.get_str(10);
 	string pub = e.get_str(10);
@@ -109,6 +112,7 @@ string fast_modular_exp(mpz_class base, mpz_class exp, mpz_class mod) {
 	mpz_class temp = 1;
 
 	while (i < exp) {
+		// qDebug() << i.get_str(10).c_str();
 		i += 1;
 		temp = (base * temp) % mod;
 
@@ -122,49 +126,106 @@ string fast_modular_exp(mpz_class base, mpz_class exp, mpz_class mod) {
 // What does encoding mean?
 string encode_chunk(string chunk) {
 	if (chunk.length() > MSG_CHUNK_LENGTH)
-		return NULL;
+		return "";
 
-	// Add 1 for the terminating null char, and 1 for the prepended padding.
-	char msg_str[3 * MSG_CHUNK_LENGTH + 2] = {0};
+	vector<char> code;
 
-	msg_str[0] = '1';
 	for (uint i = 0; i < chunk.length(); i++) {
  		string cur_char = to_string((int) chunk[i]).c_str();
+ 		// qDebug() << "Current character: " << cur_char.c_str();
  		if (cur_char.length() < 3) {
- 			msg_str[3 * i + 1] = '0';
- 			msg_str[3 * i + 2] = cur_char[0];
- 			msg_str[3 * i + 3] = cur_char[1];
+ 			code.push_back('0');
+ 			code.push_back(cur_char[0]);
+ 			code.push_back(cur_char[1]);
  		}
  		else {
- 			msg_str[3 * i + 1] = cur_char[0];
- 			msg_str[3 * i + 2] = cur_char[1];
- 			msg_str[3 * i + 3] = cur_char[2];
+ 			code.push_back(cur_char[0]);
+ 			code.push_back(cur_char[1]);
+ 			code.push_back(cur_char[2]);
  		}
-		// qDebug() << msg_str;
 	}
 
-	return msg_str;
+	code.push_back('\0');
+	return string(code.data());
 }
+
+
 
 // Encrypt msg using RSA encryption algorithm.
 string rsa_encrypt(string msg, string pub_key, string prod) {
 	mpz_class e = mpz_class(pub_key);
 	mpz_class n = mpz_class(prod);
 	
-	string encode_msg = "";
+	string encoded_msg = "1";
 
 	for (uint i = 0; i < msg.length(); i += MSG_CHUNK_LENGTH) 
-		encode_msg.append(encode_chunk(msg.substr(i, MSG_CHUNK_LENGTH)));	
+		encoded_msg.append(encode_chunk(msg.substr(i, MSG_CHUNK_LENGTH)));	
 	
-	mpz_class m = mpz_class(encode_msg);
+	mpz_class m = mpz_class(encoded_msg);
 	qDebug() << "Encoded message (pre-encryption): " << QString(m.get_str(10).c_str());
+	
+	// mpz_powm_sec
+	// x.get_mpz_t()
+	mpz_t rop;
+	mpz_init(rop);
 
-	string res = fast_modular_exp(m, e, n);
+	mpz_powm_sec(rop, m.get_mpz_t(), e.get_mpz_t(), n.get_mpz_t());
+
+	string res = mpz_class(rop).get_str(10);
 	qDebug() << "Encrypted message: " << QString(res.c_str());
+
+	// string test = fast_modular_exp(m, e, n);
+	// qDebug() << "Encrypt test: " << QString(test.c_str());
 	return res;
 }
 
-string rsa_decrypt(string key, string code) {
-	return "a";
+string decode_chunk(string chunk) {
+	if (chunk.length() > 3 * MSG_CHUNK_LENGTH)
+		return "";
+
+	// int len = chunk.length();
+	// if (len % 3 != 0)
+	// 	return "";
+	
+	vector<char> msg;
+	
+	for (uint i = 0; i < chunk.length(); i+=3) {
+		string cur_char = chunk.substr(i, 3);
+		// qDebug() << cur_char;
+
+		char c = (char) stoi(cur_char);
+		qDebug() << c;
+		msg.push_back(c);
+	}
+
+	msg.push_back('\0');
+	return string(msg.data());
+}
+
+string decode_msg(string msg) {
+	string decoded_msg = "";
+
+	// Start at 1, to throw away 0-index bit (which was used as padding).
+	for (uint i = 1; i < msg.length(); i += MSG_CHUNK_LENGTH * 3) {
+		qDebug() << "To decrypt: " << msg.substr(i, 3 * MSG_CHUNK_LENGTH).c_str();
+		// qDebug() << "Decrypt chunk: " << decode_chunk(msg.substr(i, 3 * MSG_CHUNK_LENGTH)).c_str();
+		decoded_msg.append(decode_chunk(msg.substr(i, 3 * MSG_CHUNK_LENGTH)));	
+	}
+	
+	return decoded_msg;
+}
+
+string rsa_decrypt(string code, string priv_key, string prod) {
+	mpz_class c = mpz_class(code);
+	mpz_class d = mpz_class(priv_key);
+	mpz_class n = mpz_class(prod);
+
+	mpz_t rop;
+	mpz_init(rop);
+	mpz_powm_sec(rop, c.get_mpz_t(), d.get_mpz_t(), n.get_mpz_t());
+	string res = decode_msg(mpz_class(rop).get_str(10));
+	qDebug() << "Decrypted message: " << QString(res.c_str());
+
+	return res;
 }
 	
