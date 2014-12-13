@@ -1547,7 +1547,7 @@ int main(int argc, char **argv) {
   NetSocket* sock = new NetSocket();
 
   // Create a UDP network socket
-  NetSocket* sock = new NetSocket(QCoreApplication::arguments());
+  // NetSocket* sock = new NetSocket(QCoreApplication::arguments());
   if (!sock->bind())
     exit(1);
 
