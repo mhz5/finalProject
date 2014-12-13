@@ -99,6 +99,7 @@ public:
   bool match(QByteArray metafile, QByteArray blockHash, int i);
   void myMessageEntered();
   void openPrivateMsgWindow(QString origin);
+  void addFile(QString fileName);
 
   atomic< MessageList*> messages;
   QString* myOriginID;
@@ -113,6 +114,8 @@ public:
   QPushButton *m_button;
   QTextEdit *textline;
   QTextEdit *textview;
+  QPushButton *btnDownload;
+  QPushButton *btnUnlock;
 
 public slots:
   void handleButton();
@@ -120,15 +123,17 @@ public slots:
   void openPrivateMsgWindow(QListWidgetItem *item);
   void searchQueryEntered();
   void sendDownloadRequest(QListWidgetItem* item);
+  void downloadAllFiles();
+  void tryUnlock();
 };
 
 class NetSocket : public QUdpSocket {
   Q_OBJECT
 
 public:
-  NetSocket(QStringList);
+  NetSocket();
 
-  void addPeer(QString);
+  void addPeer(QString, bool async = true);
   void addVote(QString voter, QString uploader, QString filename, int res);
   bool bind();
   double calculateScore(QString uploader, QString filename);
@@ -210,6 +215,8 @@ public:
   bool requestingBlock;
   QTimer* brTimer;
   VotingHistory* votingHistory;
+  QSet<QString> *downloadedFiles;
+  bool unlocked;
 
   const QString* blockRequestKey;
   const QString* blockReplyKey;
