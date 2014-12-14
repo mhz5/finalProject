@@ -1568,6 +1568,7 @@ int main(int argc, char **argv) {
         sock->forwarding = false;
       } else if (s == "-seed") {
         qDebug() << "Generating barrier-to-entry seed files...";
+        sock->unlocked = true;
         seed = true;
         dialog.btnUnlock->setVisible(false);
         for (int j = 0; j < BTE_COUNT; j++) {

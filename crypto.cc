@@ -8,7 +8,7 @@
 #define BITSTRENGTH 512
 #define PUBLIC_EXPONENT 65537
 // Break message up into chunks of this size.
-#define MSG_CHUNK_LENGTH 4
+#define MSG_CHUNK_LENGTH 100
 
 // GCD function for mpz_class large numbers.
 // Source: http://www.math.umn.edu/~garrett/crypto/Code/c++.html
